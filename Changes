@@ -1,6 +1,21 @@
 Revision history for Perl extension SGML::Parser::OpenSP.
 
-0.02  Wed Aug 25 00:49:11 2004
+0.98  Sat Oct 02 01:19:04 2004
+	- added more split_message tests
+	- fixed remaining typemap flaws
+	- added description for ::Tools POD
+	- better headings in OpenSP POD
+	- added documentation for p->split_message
+	- updated README to mention PPMs
+	- optimized UTF-32 transcoder
+	- improved performance through PERL_NO_GET_CONTEXT
+	- major memory management improvements
+	- fixed 0.02 release date in CHANGES
+	- updated map_catalog_document documentation
+	- updated restrict_file_reading documentation
+	- included -wxml warnings in the OpenSP.pm POD
+
+0.02  Wed Sep 22 22:22:22 2004
 	- complete rewrite; created by h2xs 1.23 with options
 		-A -O -c -n SGML::Parser::OpenSP --skip-ppport --skip-exporter -v 0.02 -b 5.8.0
 

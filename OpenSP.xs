@@ -1,13 +1,15 @@
 // OpenSP.xs -- OpenSP XS Wrapper
 //
-// $Id: OpenSP.xs,v 1.15 2004/09/18 18:35:22 hoehrmann Exp $
-
-// todo: add THX stuff?
+// $Id: OpenSP.xs,v 1.24 2004/10/01 22:31:02 hoehrmann Exp $
 
 // workaround for broken math.h in VC++ 6.0
 #if defined(_MSC_VER) && _MSC_VER < 1300
 #include <math.h>
 #endif
+
+#define PERL_NO_GET_CONTEXT
+
+#define SPO_SMALL_STRINGS_LENGTH 1024
 
 extern "C"
 {
@@ -30,13 +32,17 @@ extern "C"
 
 class SgmlParserOpenSP : private SGMLApplication {
 public:
-
+    // ...
     SgmlParserOpenSP();
+
+public:
+    // ...
     void parse(SV* file_sv);
-    SV* get_location();
+    SV*  get_location();
     void halt();
 
-    SV* m_self;
+    // ...
+    SV*  m_self;
 
 private:
     // OpenSP event handler
@@ -62,16 +68,38 @@ private:
     void openEntityChange      (const OpenEntityPtr&              p);
 
     // ...
-    void updatePosition(const SGMLApplication::Position pos);
-    void dispatchEvent(const char* name, const HV* hv);
-    bool handler_can(const char* method);
+    void dispatchEvent         (const char*                       name,
+                                const HV* hv);
+    bool handler_can           (const char*                       method);
 
     // ...
-    SV* m_handler;
-    bool m_parsing;
+    SV* cs2sv                  (const SGMLApplication::CharString s);
+    HV* location2hv            (const SGMLApplication::Location   l);
+    HV* notation2hv            (const SGMLApplication::Notation   n);
+    HV* externalid2hv          (const SGMLApplication::ExternalId id);
+    HV* entity2hv              (const SGMLApplication::Entity     e);
+    HV* attributes2hv          (const SGMLApplication::Attribute* attrs,
+                                const size_t                      n);
+    HV* attribute2hv           (const SGMLApplication::Attribute  a);
+
+    // ...
+    bool _hv_fetch_SvTRUE(HV* hv, const char* key, const I32 klen);
+    void _hv_fetch_pk_setOption(HV* hv, const char* key, const I32 klen,
+                                ParserEventGeneratorKit& pk,
+                                const enum ParserEventGeneratorKit::OptionWithArg o);
+
+    // ...
+    SV*                            m_handler;
+    bool                           m_parsing;
     SGMLApplication::Position      m_pos;
     SGMLApplication::OpenEntityPtr m_openEntityPtr;
-    EventGenerator* m_egp;
+    EventGenerator*                m_egp;
+
+    // ...
+    PerlInterpreter*               my_perl;
+
+    // ...
+    U8 m_temp[SPO_SMALL_STRINGS_LENGTH * UTF8_MAXLEN + 1];
 };
 
 ///////////////////////////////////////////////////////////////////////////
@@ -123,21 +151,32 @@ static U32 HvvType;
 // Helper functions
 ///////////////////////////////////////////////////////////////////////////
 
-SV* _cs2sv(const SGMLApplication::CharString s)
+SV* SgmlParserOpenSP::cs2sv(const SGMLApplication::CharString s)
 {
-    SV* result = newSVpvn("", 0);
+    SV* result;
     unsigned int i = 0;
     U8* d;
 
-    SvUTF8_on(result);
-    
-    for (i = 0; i < s.len; ++i)
+    // optimized memory-intensive version for small strings
+    if (s.len < SPO_SMALL_STRINGS_LENGTH)
     {
-        d = (U8 *)SvGROW(result, SvCUR(result) + UTF8_MAXLEN + 1);
-        d = uvuni_to_utf8_flags(d + SvCUR(result), s.ptr[i], 0); 
-        SvCUR_set(result, d - (U8 *)SvPVX(result));
+        d = m_temp;
+        for (i = 0; i < s.len; ++i)
+            d = uvuni_to_utf8_flags(d, s.ptr[i], 0);
+        result = newSVpvn((const char*)m_temp, d - m_temp);
+    }
+    else
+    {
+        result = newSVpvn("", 0);
+        for (i = 0; i < s.len; ++i)
+        {
+            d = (U8 *)SvGROW(result, SvCUR(result) + UTF8_MAXLEN + 1);
+            d = uvuni_to_utf8_flags(d + SvCUR(result), s.ptr[i], 0); 
+            SvCUR_set(result, d - (U8 *)SvPVX(result));
+        }
     }
 
+    SvUTF8_on(result);
     return result;
 }
 
@@ -145,16 +184,9 @@ SV* _cs2sv(const SGMLApplication::CharString s)
 // OpenSP data structure conversion helper functions
 ///////////////////////////////////////////////////////////////////////////
 
-static HV* _location2hv   (const SGMLApplication::Location l);
-static HV* _notation2hv   (const SGMLApplication::Notation n);
-static HV* _externalid2hv (const SGMLApplication::ExternalId id);
-static HV* _entity2hv     (const SGMLApplication::Entity e);
-static HV* _attributes2hv (const SGMLApplication::Attribute* attrs, const size_t n);
-static HV* _attribute2hv  (const SGMLApplication::Attribute a);
-
 #define uv_or_undef(x) (x == (unsigned long)-1 ? &PL_sv_undef : newSVuv(x))
 
-static HV* _location2hv(const SGMLApplication::Location l)
+HV* SgmlParserOpenSP::location2hv(const SGMLApplication::Location l)
 {
     HV* hv = newHV();
 
@@ -162,50 +194,50 @@ static HV* _location2hv(const SGMLApplication::Location l)
     hv_store(hv, "ColumnNumber", 12, uv_or_undef(l.columnNumber), HvvColumnNumber);
     hv_store(hv, "ByteOffset", 10, uv_or_undef(l.byteOffset), HvvByteOffset);
     hv_store(hv, "EntityOffset", 12, uv_or_undef(l.entityOffset), HvvEntityOffset);
-    hv_store(hv, "EntityName", 10, _cs2sv(l.entityName), HvvEntityName);
-    hv_store(hv, "FileName", 8, _cs2sv(l.filename), HvvFileName);
+    hv_store(hv, "EntityName", 10, cs2sv(l.entityName), HvvEntityName);
+    hv_store(hv, "FileName", 8, cs2sv(l.filename), HvvFileName);
 
     return hv;
 }
 
-static HV* _notation2hv(const SGMLApplication::Notation n)
+HV* SgmlParserOpenSP::notation2hv(const SGMLApplication::Notation n)
 {
     HV* hv = newHV();
 
     if (n.name.len > 0)
     {
-        SV* sv = newRV_noinc((SV*)_externalid2hv(n.externalId));
-        hv_store(hv, "Name", 4, _cs2sv(n.name), HvvName);
+        SV* sv = newRV_noinc((SV*)externalid2hv(n.externalId));
+        hv_store(hv, "Name", 4, cs2sv(n.name), HvvName);
         hv_store(hv, "ExternalId", 10, sv, HvvExternalId);
     }
 
     return hv;
 }
 
-static HV* _externalid2hv(const SGMLApplication::ExternalId id)
+HV* SgmlParserOpenSP::externalid2hv(const SGMLApplication::ExternalId id)
 {
     HV* hv = newHV();
 
     if (id.haveSystemId)
-        hv_store(hv, "SystemId", 8, _cs2sv(id.systemId), HvvSystemId);
+        hv_store(hv, "SystemId", 8, cs2sv(id.systemId), HvvSystemId);
 
     if (id.havePublicId)
-        hv_store(hv, "PublicId", 8, _cs2sv(id.publicId), HvvPublicId);
+        hv_store(hv, "PublicId", 8, cs2sv(id.publicId), HvvPublicId);
 
     if (id.haveGeneratedSystemId)
     {
-        SV* sv = _cs2sv(id.generatedSystemId);
+        SV* sv = cs2sv(id.generatedSystemId);
         hv_store(hv, "GeneratedSystemId", 17, sv, HvvGeneratedSystemId);
     }
 
     return hv;
 }
 
-static HV* _entity2hv(const SGMLApplication::Entity e)
+HV* SgmlParserOpenSP::entity2hv(const SGMLApplication::Entity e)
 {
     HV* hv = newHV();
 
-    hv_store(hv, "Name", 4, _cs2sv(e.name), HvvName);
+    hv_store(hv, "Name", 4, cs2sv(e.name), HvvName);
 
     // dataType
     switch (e.dataType)
@@ -250,13 +282,13 @@ static HV* _entity2hv(const SGMLApplication::Entity e)
     if (e.isInternal)
     {
         hv_store(hv, "IsInternal", 10, newSViv(1), HvvIsInternal);
-        hv_store(hv, "Text", 4, _cs2sv(e.text), HvvText);
+        hv_store(hv, "Text", 4, cs2sv(e.text), HvvText);
     }
     else
     {
-        SV* sv1 = newRV_noinc((SV*)_externalid2hv(e.externalId));
-        SV* sv2 = newRV_noinc((SV*)_attributes2hv(e.attributes, e.nAttributes));
-        SV* sv3 = newRV_noinc((SV*)_notation2hv(e.notation));
+        SV* sv1 = newRV_noinc((SV*)externalid2hv(e.externalId));
+        SV* sv2 = newRV_noinc((SV*)attributes2hv(e.attributes, e.nAttributes));
+        SV* sv3 = newRV_noinc((SV*)notation2hv(e.notation));
         
         hv_store(hv, "ExternalId", 10, sv1, HvvExternalId);
         hv_store(hv, "Attributes", 10, sv2, HvvAttributes);
@@ -266,26 +298,26 @@ static HV* _entity2hv(const SGMLApplication::Entity e)
     return hv;
 }
 
-static HV* _attributes2hv(const SGMLApplication::Attribute* attrs, size_t n)
+HV* SgmlParserOpenSP::attributes2hv(const SGMLApplication::Attribute* attrs, size_t n)
 {
     HV* hv = newHV();
 
     for (unsigned int i = 0; i < n; ++i)
     {
-        HV* a = _attribute2hv(attrs[i]);
+        HV* a = attribute2hv(attrs[i]);
         hv_store(a, "Index", 5, newSViv(i), HvvIndex);
-        hv_store_ent(hv, sv_2mortal(_cs2sv(attrs[i].name)), newRV_noinc((SV*)a), 0);
+        hv_store_ent(hv, sv_2mortal(cs2sv(attrs[i].name)), newRV_noinc((SV*)a), 0);
     }
 
     return hv;
 }
 
-static HV* _attribute2hv(const SGMLApplication::Attribute a)
+HV* SgmlParserOpenSP::attribute2hv(const SGMLApplication::Attribute a)
 {
     HV* hv = newHV();
 
     // Name => ...
-    hv_store(hv, "Name", 4, _cs2sv(a.name), HvvName);
+    hv_store(hv, "Name", 4, cs2sv(a.name), HvvName);
 
     // Type => ...
     if (a.type == SGMLApplication::Attribute::cdata)
@@ -298,7 +330,7 @@ static HV* _attribute2hv(const SGMLApplication::Attribute a)
 
             if (a.cdataChunks[i].isSdata)
             {
-                SV* sv = _cs2sv(a.cdataChunks[i].entityName);
+                SV* sv = cs2sv(a.cdataChunks[i].entityName);
 
                 // redundant?
                 hv_store(cc, "IsSdata", 7, newSViv(1), HvvIsSdata);
@@ -313,7 +345,7 @@ static HV* _attribute2hv(const SGMLApplication::Attribute a)
                 hv_store(cc, "NonSgmlChar", 11, sv, HvvNonSgmlChar);
             }
 
-            hv_store(cc, "Data", 4, _cs2sv(a.cdataChunks[i].data), HvvData);
+            hv_store(cc, "Data", 4, cs2sv(a.cdataChunks[i].data), HvvData);
 
             av_push(av, newRV_noinc((SV*)cc));
         }
@@ -327,16 +359,16 @@ static HV* _attribute2hv(const SGMLApplication::Attribute a)
         AV* entities = newAV();
 
         hv_store(hv, "Type", 4, newSVpvn("tokenized", 9), HvvType);
-        hv_store(hv, "Tokens", 6, _cs2sv(a.tokens), HvvTokens);
+        hv_store(hv, "Tokens", 6, cs2sv(a.tokens), HvvTokens);
         hv_store(hv, "IsGroup", 7, newSViv((int)a.isGroup), HvvIsGroup);
         hv_store(hv, "IsId", 4, newSViv((int)a.isId), HvvIsId);
 
         for (unsigned int i = 0; i < a.nEntities; ++i)
         {
-            av_push(entities, newRV_noinc((SV*)_entity2hv(a.entities[i])));
+            av_push(entities, newRV_noinc((SV*)entity2hv(a.entities[i])));
         }
 
-        SV* sv1 = newRV_noinc((SV*)_notation2hv(a.notation));
+        SV* sv1 = newRV_noinc((SV*)notation2hv(a.notation));
         SV* sv2 = newRV_noinc((SV*)entities);
         
         hv_store(hv, "Notation", 8, sv1, HvvNotation);
@@ -375,13 +407,13 @@ static HV* _attribute2hv(const SGMLApplication::Attribute a)
 // ...
 ///////////////////////////////////////////////////////////////////////////
 
-static bool _hv_fetch_SvTRUE(HV* hv, const char* key, const I32 klen)
+bool SgmlParserOpenSP::_hv_fetch_SvTRUE(HV* hv, const char* key, const I32 klen)
 {
     SV** svp = hv_fetch(hv, key, klen, 0);
     return (svp && SvTRUE(*svp));
 }
 
-static void _hv_fetch_pk_setOption(HV* hv, const char* key, const I32 klen,
+void SgmlParserOpenSP::_hv_fetch_pk_setOption(HV* hv, const char* key, const I32 klen,
                             ParserEventGeneratorKit& pk,
                             const enum ParserEventGeneratorKit::OptionWithArg o)
 {
@@ -429,6 +461,10 @@ static void _hv_fetch_pk_setOption(HV* hv, const char* key, const I32 klen,
 
 SgmlParserOpenSP::SgmlParserOpenSP()
 {
+    dTHX;
+
+    this->my_perl = my_perl;
+
     // compute hashes to improve performance
     PERL_HASH(HvvAttributes,        "Attributes",        10);
     PERL_HASH(HvvByteOffset,        "ByteOffset",        10);
@@ -487,7 +523,7 @@ SV* SgmlParserOpenSP::get_location()
 
     SGMLApplication::Location l(m_openEntityPtr, m_pos);
 
-    return newRV_noinc((SV*)_location2hv(l));
+    return newRV_noinc((SV*)location2hv(l));
 }
 
 void SgmlParserOpenSP::halt()
@@ -525,7 +561,10 @@ bool SgmlParserOpenSP::handler_can(const char* method)
 void SgmlParserOpenSP::dispatchEvent(const char* name, const HV* hv)
 {
     dSP;
-    
+
+    ENTER;
+    SAVETMPS;
+
     PUSHMARK(SP);
     XPUSHs(m_handler);
     XPUSHs(hv ? sv_2mortal(newRV_noinc((SV*)hv)) : &PL_sv_undef);
@@ -543,6 +582,11 @@ void SgmlParserOpenSP::dispatchEvent(const char* name, const HV* hv)
         m_egp->halt();
         POPs;
     }
+
+    PUTBACK;
+
+    FREETMPS;
+    LEAVE;
 }
 
 void SgmlParserOpenSP::parse(SV* file_sv)
@@ -650,10 +694,7 @@ void SgmlParserOpenSP::parse(SV* file_sv)
 // OpenSP event handler
 ///////////////////////////////////////////////////////////////////////////
 
-void SgmlParserOpenSP::updatePosition(const SGMLApplication::Position pos)
-{
-    m_pos = pos;
-}
+#define updatePosition(pos) m_pos = pos
 
 ///////////////////////////////////////////////////////////////////////////
 // SgmlParserOpenSP::appinfo
@@ -671,7 +712,7 @@ void SgmlParserOpenSP::appinfo(const AppinfoEvent& e)
     if (!e.none)
     {
         hv_store(hv, "None", 4, newSViv(0), HvvNone);
-        hv_store(hv, "String", 6, _cs2sv(e.string), HvvString);
+        hv_store(hv, "String", 6, cs2sv(e.string), HvvString);
     }
     else
     {
@@ -694,8 +735,8 @@ void SgmlParserOpenSP::pi(const PiEvent& e)
 
     HV* hv = newHV();
 
-    hv_store(hv, "EntityName", 10, _cs2sv(e.entityName), HvvEntityName);
-    hv_store(hv, "Data", 4, _cs2sv(e.data), HvvData);
+    hv_store(hv, "EntityName", 10, cs2sv(e.entityName), HvvEntityName);
+    hv_store(hv, "Data", 4, cs2sv(e.data), HvvData);
     dispatchEvent("processing_instruction", hv);
 }
 
@@ -711,9 +752,9 @@ void SgmlParserOpenSP::startElement(const StartElementEvent& e)
     updatePosition(e.pos);
 
     HV* hv = newHV();
-    SV* sv = newRV_noinc((SV*)_attributes2hv(e.attributes, e.nAttributes));
+    SV* sv = newRV_noinc((SV*)attributes2hv(e.attributes, e.nAttributes));
 
-    hv_store(hv, "Name", 4, _cs2sv(e.gi), HvvName);
+    hv_store(hv, "Name", 4, cs2sv(e.gi), HvvName);
     hv_store(hv, "Attributes", 10, sv, HvvAttributes);
 
     switch (e.contentType)
@@ -753,7 +794,7 @@ void SgmlParserOpenSP::endElement(const EndElementEvent& e)
 
     HV* hv = newHV();
 
-    hv_store(hv, "Name", 4, _cs2sv(e.gi), HvvName);
+    hv_store(hv, "Name", 4, cs2sv(e.gi), HvvName);
 
     dispatchEvent("end_element", hv);
 }
@@ -771,7 +812,7 @@ void SgmlParserOpenSP::data(const DataEvent& e)
 
     HV* hv = newHV();
 
-    hv_store(hv, "Data", 4, _cs2sv(e.data), HvvData);
+    hv_store(hv, "Data", 4, cs2sv(e.data), HvvData);
 
     dispatchEvent("data", hv);
 }
@@ -789,8 +830,8 @@ void SgmlParserOpenSP::sdata(const SdataEvent& e)
 
     HV* hv = newHV();
 
-    hv_store(hv, "EntityName", 10, _cs2sv(e.entityName), HvvEntityName);
-    hv_store(hv, "Text", 4, _cs2sv(e.text), HvvText);
+    hv_store(hv, "EntityName", 10, cs2sv(e.entityName), HvvEntityName);
+    hv_store(hv, "Text", 4, cs2sv(e.text), HvvText);
 
     dispatchEvent("sdata", hv);
 }
@@ -808,7 +849,7 @@ void SgmlParserOpenSP::externalDataEntityRef(const ExternalDataEntityRefEvent& e
 
     HV* hv = newHV();
 
-    hv_store(hv, "Entity", 6, newRV_noinc((SV*)_entity2hv(e.entity)), HvvEntity);
+    hv_store(hv, "Entity", 6, newRV_noinc((SV*)entity2hv(e.entity)), HvvEntity);
 
     dispatchEvent("external_data_entity_ref", hv);
 }
@@ -826,7 +867,7 @@ void SgmlParserOpenSP::subdocEntityRef(const SubdocEntityRefEvent& e)
 
     HV* hv = newHV();
 
-    hv_store(hv, "Entity", 6, newRV_noinc((SV*)_entity2hv(e.entity)), HvvEntity);
+    hv_store(hv, "Entity", 6, newRV_noinc((SV*)entity2hv(e.entity)), HvvEntity);
 
     dispatchEvent("subdoc_entity_ref", hv);
 }
@@ -844,11 +885,11 @@ void SgmlParserOpenSP::startDtd(const StartDtdEvent& e)
 
     HV* hv = newHV();
 
-    hv_store(hv, "Name", 4, _cs2sv(e.name), HvvName);
+    hv_store(hv, "Name", 4, cs2sv(e.name), HvvName);
 
     if (e.haveExternalId)
     {
-        SV* sv = newRV_noinc((SV*)_externalid2hv(e.externalId));
+        SV* sv = newRV_noinc((SV*)externalid2hv(e.externalId));
         hv_store(hv, "ExternalId", 10, sv, HvvExternalId);
     }
 
@@ -868,7 +909,7 @@ void SgmlParserOpenSP::endDtd(const EndDtdEvent& e)
 
     HV* hv = newHV();
 
-    hv_store(hv, "Name", 4, _cs2sv(e.name), HvvName);
+    hv_store(hv, "Name", 4, cs2sv(e.name), HvvName);
 
     dispatchEvent("end_dtd", hv);
 }
@@ -900,7 +941,7 @@ void SgmlParserOpenSP::generalEntity(const GeneralEntityEvent& e)
 
     HV* hv = newHV();
 
-    hv_store(hv, "Entity", 6, newRV_noinc((SV*)_entity2hv(e.entity)), HvvEntity);
+    hv_store(hv, "Entity", 6, newRV_noinc((SV*)entity2hv(e.entity)), HvvEntity);
 
     dispatchEvent("general_entity", hv);
 }
@@ -922,8 +963,8 @@ void SgmlParserOpenSP::commentDecl(const CommentDeclEvent& e)
     for (unsigned int i = 0; i < e.nComments; ++i)
     {
         HV* comment = newHV();
-        hv_store(comment, "Comment", 7, _cs2sv(e.comments[i]), HvvComment);
-        hv_store(comment, "Separator", 9, _cs2sv(e.seps[i]), HvvSeparator);
+        hv_store(comment, "Comment", 7, cs2sv(e.comments[i]), HvvComment);
+        hv_store(comment, "Separator", 9, cs2sv(e.seps[i]), HvvSeparator);
         av_push(av, newRV_noinc((SV*)comment));
     }
 
@@ -985,7 +1026,7 @@ void SgmlParserOpenSP::markedSectionStart(const MarkedSectionStartEvent& e)
             break;
         case SGMLApplication::MarkedSectionStartEvent::Param::entityRef:
             hv_store(param, "Type", 6, newSVpvn("entityRef", 9), HvvType);
-            hv_store(param, "EntityName", 10, _cs2sv(e.params[i].entityName), HvvEntityName);
+            hv_store(param, "EntityName", 10, cs2sv(e.params[i].entityName), HvvEntityName);
             break;
         }
 
@@ -1042,7 +1083,7 @@ void SgmlParserOpenSP::ignoredChars(const IgnoredCharsEvent& e)
 
     HV* hv = newHV();
 
-    hv_store(hv, "Data", 4, _cs2sv(e.data), HvvData);
+    hv_store(hv, "Data", 4, cs2sv(e.data), HvvData);
 
     dispatchEvent("ignored_chars", hv);
 }
@@ -1060,7 +1101,7 @@ void SgmlParserOpenSP::error(const ErrorEvent& e)
 
     HV* hv = newHV();
 
-    hv_store(hv, "Message", 7, _cs2sv(e.message), HvvMessage);
+    hv_store(hv, "Message", 7, cs2sv(e.message), HvvMessage);
 
     switch (e.type)
     {
@@ -1119,3 +1160,6 @@ SgmlParserOpenSP::get_location()
 
 void
 SgmlParserOpenSP::halt()
+
+void
+SgmlParserOpenSP::DESTROY()
