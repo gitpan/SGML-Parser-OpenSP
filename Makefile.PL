@@ -1,26 +1,39 @@
 use 5.008;
 use ExtUtils::MakeMaker;
 
-$CC = 'g++';
+my %options;
 
-# See lib/ExtUtils/MakeMaker.pm for details of how to influence
-# the contents of the Makefile that is written.
+if ($^O eq "MSWin32")
+{
+    $options{LIBS} = "-l" . prompt("Where is the OpenSP link library?",
+                                   "D:\\osp\\lib\\Release\\osp152.lib");
+    $options{CC}   =        prompt("Which compiler should be used?",
+                                   "cl -TP -EHsc -ID:/osp/");
+}
+else
+{
+    # assume some compatible Linux
+    $options{LD}   = "g++";
+    $options{CC}   = "g++";
+    $options{LIBS} = "-lstdc++ -losp";
+}
+
 WriteMakefile(
-    'NAME'		=> 'SGML::Parser::OpenSP',
-    'VERSION_FROM'	=> 'OpenSP.pm', # finds $VERSION
-    'PREREQ_PM'		=> {}, # e.g., Module::Name => 1.1
-    ($] >= 5.005 ?    ## Add these new keywords supported since 5.005
-      (ABSTRACT_FROM => 'OpenSP.pm', # retrieve abstract from module
-       AUTHOR     => 'Terje Bless <link@cpan.org>') : ()),
-    'LIBS'		=> ['-losp'], # e.g., '-lm'
-    'DEFINE'		=> '', # e.g., '-DHAVE_SOMETHING'
-    'CC'                => $CC,
-    'LD'                => $CC,
-    'INC'		=> '-I.', # e.g., '-I. -I/usr/include/other'
-	# Un-comment this if you add C files to link with later:
-    # 'OBJECT'		=> '$(O_FILES)', # link all the C files too
-    'XSOPT'             => '-C++',
-    'XSPROTOARG'        => '-prototypes',
-    'TYPEMAPS'          => ['perlobject.map'],
-);
+    NAME              => 'SGML::Parser::OpenSP',
+    VERSION_FROM      => 'lib/SGML/Parser/OpenSP.pm',
+    PREREQ_PM         => {
+      Class::Accessor => 0,
+      Test::Exception => 0,
+    },
+    ($] >= 5.005 ?
+      (ABSTRACT_FROM  => 'lib/SGML/Parser/OpenSP.pm',
+       AUTHOR         => 'Bjoern Hoehrmann <bjoern@hoehrmann.de>') : ()),
 
+    # SP_MULTI_BYTE is needed iff OpenSP is built with SP_MULTI_BYTE
+    DEFINE            => '-DSP_MULTI_BYTE=1',
+
+    INC               => '', # e.g., '-I/usr/include/other'
+    XSOPT             => '-C++',
+
+    %options
+);
