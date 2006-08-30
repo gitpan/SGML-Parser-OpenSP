@@ -1,16 +1,18 @@
 # OpenSP.pm -- SGML::Parser::OpenSP module
 #
-# $Id: OpenSP.pm,v 1.20 2004/10/01 22:14:58 hoehrmann Exp $
+# $Id: OpenSP.pm,v 1.31 2006/08/30 14:34:01 hoehrmann Exp $
 
 package SGML::Parser::OpenSP;
 use 5.008; 
 use strict;
 use warnings;
+use Carp;
 use SGML::Parser::OpenSP::Tools qw();
+use File::Temp                  qw();
 
 use base qw(Class::Accessor);
 
-our $VERSION = '0.98';
+our $VERSION = '0.99';
 
 require XSLoader;
 XSLoader::load('SGML::Parser::OpenSP', $VERSION);
@@ -30,9 +32,8 @@ __PACKAGE__->mk_accessors(qw/
     search_dirs
     include_params
     active_links
+    pass_file_descriptor
 /);
-
-# todo: needs documentation
 
 sub split_message
 {
@@ -49,6 +50,43 @@ sub split_message
         $self->show_error_numbers,
         $self->show_open_elements
     );
+}
+
+sub parse_string
+{
+    my $self = shift;
+    my $text = shift;
+    
+    # high security on systems that support it
+    File::Temp->safe_level(File::Temp::HIGH);
+    
+    # create temp file, this would croak if it fails, so
+    # there is no need for us to check the return value
+    my $fh = File::Temp->new();
+
+    # set proper mode
+    binmode $fh, ':utf8';
+
+    # store content
+    print $fh $text;
+
+    # seek to start
+    seek $fh, 0, 0;
+
+    if (not $self->pass_file_descriptor)
+    {
+        $self->parse('<OSFILE encoding="utf-8">' . $fh->filename);
+    }
+    else
+    {
+        my $no = fileno $fh;
+        unless (defined $no)
+        {
+            carp "fileno() on temporary file handle failed.\n";
+            return;
+        }
+        $self->parse('<OSFD encoding="utf-8">' . $no);
+    }
 }
 
 1;
@@ -81,6 +119,38 @@ this module are event based. As the parser recognizes parts of the document
 (say the start or end of an element), then any handlers registered for that
 type of an event are called with suitable parameters.
 
+=head1 COMMON METHODS
+
+=over 4
+
+=item new()
+
+Returns a new SGML::Parser::OpenSP object. Takes no arguments.
+
+=item parse($file)
+
+Parses the file passed as an argument. Note that this must be a filename and
+not a filehandle. See L<PROCESSING FILES> below for details.
+
+=item parse_string($data)
+
+Parses the data passed as an argument. See L<PROCESSING FILES> below for details.
+
+=item halt()
+
+Halts processing before parsing the entire document. Takes no arguments.
+
+=item split_message()
+
+Splits OpenSP's error messages into their component parts.
+See L<POST-PROCESSING ERROR MESSAGES> below for details.
+
+=item get_location()
+
+See L<POSITIONING INFORMATION> below for details.
+
+=back
+
 =head1 CONFIGURATION
 
 =head2 BOOLEAN OPTIONS
@@ -91,7 +161,11 @@ type of an event are called with suitable parameters.
 
 Report events to the blessed reference $handler.
 
+=back
+
 =head2 ERROR MESSAGE FORMAT
+
+=over 4
 
 =item $p->show_open_entities([$bool])
 
@@ -108,7 +182,11 @@ The default is false.
 
 Show message numbers in error messages.
 
+=back
+
 =head2 GENERATED EVENTS
+
+=over 4
 
 =item $p->output_comment_decls([$bool])
 
@@ -123,7 +201,11 @@ C<marked_section_end>, C<ignored_chars>). The default is false.
 
 Generate C<general_entity> events. The default is false.
 
+=back
+
 =head2 IO SETTINGS
+
+=over 4
 
 =item $p->map_catalog_document([$bool])
 
@@ -152,7 +234,29 @@ Multiple values options are allowed. See the description of the osfile
 storage manager in the OpenSP documentation for more information about file
 searching.
 
+=item $p->pass_file_descriptor([$bool])
+
+Instruct C<parse_string> to pass the input data down to the guts of OpenSP
+using the C<OSFD> storage manager (if true) or the C<OSFILE> storage manager
+(if false). This amounts to the difference between passing a file descriptor
+and a (temporary) file name.
+
+The default is true except on platforms, such as Win32, which are known to
+not support passing file descriptors around in this manner. On platforms
+which support it you can call this method with a false parameter to force
+use of temporary file names instead.
+
+In general, this will do the right thing on its own so it's best to
+consider this an internal method. If your platform is such that you have
+to force use of the OSFILE storage manager, please report it as a bug
+and include the values of C<$^O>, C<$Config{archname}>, and a description
+of the platform (e.g. "Windows Vista Service Pack 42").
+
+=back
+
 =head2 PROCESSING OPTIONS
+
+=over 4
 
 =item $p->include_params([@include_params])
 
@@ -562,7 +666,7 @@ with a hash reference
 The following events are defined:
 
   * appinfo
-  * pi
+  * processing_instruction
   * start_element
   * end_element
   * data
@@ -867,7 +971,7 @@ for details.
   Terje Bless <link@cpan.org> wrote version 0.01.
   Bjoern Hoehrmann <bjoern@hoehrmann.de> wrote version 0.02.
 
-  Copyright (c) 2004 Bjoern Hoehrmann <bjoern@hoehrmann.de>.
+  Copyright (c) 2006 Bjoern Hoehrmann <bjoern@hoehrmann.de>.
   This module is licensed under the same terms as Perl itself.
 
 =cut

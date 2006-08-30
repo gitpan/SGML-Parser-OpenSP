@@ -1,6 +1,6 @@
 // OpenSP.xs -- OpenSP XS Wrapper
 //
-// $Id: OpenSP.xs,v 1.24 2004/10/01 22:31:02 hoehrmann Exp $
+// $Id: OpenSP.xs,v 1.28 2005/08/16 15:30:22 hoehrmann Exp $
 
 // workaround for broken math.h in VC++ 6.0
 #if defined(_MSC_VER) && _MSC_VER < 1300
@@ -418,6 +418,7 @@ void SgmlParserOpenSP::_hv_fetch_pk_setOption(HV* hv, const char* key, const I32
                             const enum ParserEventGeneratorKit::OptionWithArg o)
 {
     SV** svp = hv_fetch(hv, key, klen, 0);
+    SV* rv;
 
     if (!svp || !*svp)
         return;
@@ -429,11 +430,19 @@ void SgmlParserOpenSP::_hv_fetch_pk_setOption(HV* hv, const char* key, const I32
         return;
     }
 
-    if (!SvROK(*svp) || !(SvTYPE(*svp) == SVt_PVAV))
+    if (!SvROK(*svp))
+        return;
+
+    rv = SvRV(*svp);
+
+    if (!rv)
+        return;
+
+    if (!(SvTYPE(rv) == SVt_PVAV))
         return;
 
     // array reference
-    AV* av = (AV*)SvRV(*svp);
+    AV* av = (AV*)rv;
     I32 len = av_len(av);
 
     for (I32 i = 0; i < len; ++i)
@@ -1151,6 +1160,22 @@ PROTOTYPES: DISABLE
 
 SgmlParserOpenSP*
 SgmlParserOpenSP::new()
+  INIT:
+    SV* os;
+    int pfd;
+  CODE:
+    RETVAL = new SgmlParserOpenSP();
+    ST(0) = sv_newmortal();
+
+    sv_upgrade(ST(0), SVt_RV);
+    SvRV(ST(0)) = (SV*)newHV();
+    SvROK_on(ST(0));
+    sv_bless(ST(0), gv_stashpv(CLASS, 1));
+    hv_store((HV*)SvRV(ST(0)), "__o", 3, newSViv(PTR2IV(RETVAL)), 0);
+  
+    os = get_sv("\017", 0);
+    pfd = (os && !strEQ("MSWin32", SvPV_nolen(os))) ? 1 : 0;
+    hv_store((HV*)SvRV(ST(0)), "pass_file_descriptor", 20, newSViv(pfd), 0);
 
 void
 SgmlParserOpenSP::parse(SV* file_sv)

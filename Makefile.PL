@@ -6,9 +6,9 @@ my %options;
 if ($^O eq "MSWin32")
 {
     $options{LIBS} = "-l" . prompt("Where is the OpenSP link library?",
-                                   "D:\\osp\\lib\\Release\\osp152.lib");
+                                   "T:\\osp\\lib\\Release\\osp152.lib");
     $options{CC}   =        prompt("Which compiler should be used?",
-                                   "cl -TP -EHsc -ID:/osp/");
+                                   "cl -TP -EHsc -IT:/osp/");
 }
 else
 {
@@ -24,6 +24,7 @@ WriteMakefile(
     PREREQ_PM         => {
       Class::Accessor => 0,
       Test::Exception => 0,
+      File::Temp      => 0,
     },
     ($] >= 5.005 ?
       (ABSTRACT_FROM  => 'lib/SGML/Parser/OpenSP.pm',

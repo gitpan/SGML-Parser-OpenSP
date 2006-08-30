@@ -1,16 +1,11 @@
 TYPEMAP
 SgmlParserOpenSP*		SgmlParserOpenSPObj
 
-OUTPUT
-SgmlParserOpenSPObj
-        sv_upgrade($arg, SVt_RV);
-        SvRV($arg) = (SV*)newHV();
-        SvROK_on($arg);
-        sv_bless($arg, gv_stashpv(CLASS, 1));
-        hv_store((HV*)SvRV($arg), \"__o\", 3, newSViv(PTR2IV($var)), 0);
-
 INPUT
 SgmlParserOpenSPObj
+        if ($arg == NULL || !sv_isobject($arg))
+          croak(\"not a proper SGML::Parser::OpenSP object\\n\");
+
         SV** svp = hv_fetch((HV*)SvRV($arg), \"__o\", 3, 0);
 
         if (!svp || !*svp)

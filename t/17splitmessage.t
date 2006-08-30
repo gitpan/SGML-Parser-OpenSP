@@ -1,6 +1,6 @@
 # 17splitmessage.t -- ...
 #
-# $Id: 17splitmessage.t,v 1.1 2004/09/14 08:40:31 hoehrmann Exp $
+# $Id: 17splitmessage.t,v 1.2 2004/10/01 23:21:19 hoehrmann Exp $
 
 use strict;
 use warnings;
