@@ -1,5 +1,11 @@
 Revision history for Perl extension SGML::Parser::OpenSP.
 
+0.991  Thu Dec  6 07:25:00 2007
+	- added 20passfd.t, 21parsestring.t, 22mwarnings.t
+	- multi-arg options no longer have the last arg ignored
+	- http://rt.cpan.org/Ticket/Display.html?id=26791
+	  Added note to the README file about -dev packages.
+
 0.99  Wed Aug 30 17:00:00 2006
 	- fixed a bug in how parse_string handles encodings
 	- added parse_string tests

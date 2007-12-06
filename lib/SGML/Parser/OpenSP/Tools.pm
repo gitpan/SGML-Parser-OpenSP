@@ -1,6 +1,6 @@
 # Tools.pm -- SGML::Parser::OpenSP::Tools module
 #
-# $Id: Tools.pm,v 1.8 2005/08/16 15:30:22 hoehrmann Exp $
+# $Id: Tools.pm,v 1.9 2006/08/30 14:50:35 hoehrmann Exp $
 
 package SGML::Parser::OpenSP::Tools;
 use 5.008; 
