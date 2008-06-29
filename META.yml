@@ -1,6 +1,6 @@
 --- #YAML:1.0
 name:                SGML-Parser-OpenSP
-version:             0.992
+version:             0.993
 abstract:            Parse SGML documents using OpenSP
 license:             perl
 author:              

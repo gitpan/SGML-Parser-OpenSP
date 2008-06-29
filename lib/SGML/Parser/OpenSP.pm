@@ -12,7 +12,7 @@ use File::Temp                  qw();
 
 use base qw(Class::Accessor);
 
-our $VERSION = '0.992';
+our $VERSION = '0.993';
 
 require XSLoader;
 XSLoader::load('SGML::Parser::OpenSP', $VERSION);
