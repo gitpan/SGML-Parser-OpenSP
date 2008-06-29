@@ -1,5 +1,12 @@
 Revision history for Perl extension SGML::Parser::OpenSP.
 
+0.992  Sun Jun 29 20:00:00 2008
+	- added simple example script eg/xhtml1val.pl
+	- added LICENSE => 'perl' to Makefile.PL
+	- hopefully cleared executable bit on Makefile.PL
+	- Updated copyright/license documentation
+	- removed version number from README
+
 0.991  Thu Dec  6 07:25:00 2007
 	- added 20passfd.t, 21parsestring.t, 22mwarnings.t
 	- multi-arg options no longer have the last arg ignored

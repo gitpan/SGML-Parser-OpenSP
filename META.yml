@@ -1,13 +1,16 @@
-# http://module-build.sourceforge.net/META-spec.html
-#XXXXXXX This is a prototype!!!  It will change in the future!!! XXXXX#
-name:         SGML-Parser-OpenSP
-version:      0.991
-version_from: lib/SGML/Parser/OpenSP.pm
-installdirs:  site
-requires:
+--- #YAML:1.0
+name:                SGML-Parser-OpenSP
+version:             0.992
+abstract:            Parse SGML documents using OpenSP
+license:             perl
+author:              
+    - Bjoern Hoehrmann <bjoern@hoehrmann.de>
+generated_by:        ExtUtils::MakeMaker version 6.44
+distribution_type:   module
+requires:     
     Class::Accessor:               0
     File::Temp:                    0
     Test::Exception:               0
-
-distribution_type: module
-generated_by: ExtUtils::MakeMaker version 6.30
+meta-spec:
+    url:     http://module-build.sourceforge.net/META-spec-v1.3.html
+    version: 1.3
